@@ -121,9 +121,14 @@ class FeishuWebSocketListener:
         print("⚡ 正在启动飞书官方「长连接」WebSocket 监听模式...")
         print(f" - App ID: {self.app_id[:6]}******")
         print(" - 监听事件: im.message.receive_v1 (群聊 @机器人 消息)")
-        print(" - 关键词: '新闻', 'News', 'news'")
-        print(" - 特性: 无需公网IP / 无需域名 / 无需Challenge校验")
+        print(" - 触发关键词: '新闻', 'News', 'news'")
+        print(" - 状态: 无需公网IP / 无需域名 / 无需Challenge校验")
         print("=" * 60)
+        print("👉 注意：要成功接收群内 @消息，请确保在飞书开放平台已完成 3 个配置：")
+        print("   1.「事件与回调」-> 点击「添加事件」-> 勾选「接收消息 (im.message.receive_v1)」")
+        print("   2.「权限管理」-> 搜索并开通「获取群聊中所有@机器人的消息 (im:message:group_at_msg)」")
+        print("   3.「版本管理与发布」->「创建版本」并点击「申请发布」（这一步最重要，发布后权限和事件才会真正生效！）")
+        print("=" * 60 + "\n")
 
         event_handler = (
             lark.EventDispatcherHandler.builder("", "")
@@ -137,6 +142,19 @@ class FeishuWebSocketListener:
             event_handler=event_handler,
             log_level=lark.LogLevel.INFO,
         )
+
+        # 实时拦截并打印 WebSocket 数据帧，方便秒级排查
+        orig_handle_data_frame = cli._handle_data_frame
+        async def _debug_handle_data_frame(frame):
+            try:
+                pl = frame.payload.decode("utf-8", errors="ignore")
+                if "im.message.receive_v1" in pl or "chat_id" in pl:
+                    print(f"\n📩 [飞书长连接捕获到消息事件]:\n{pl}\n")
+            except Exception:
+                pass
+            return await orig_handle_data_frame(frame)
+
+        cli._handle_data_frame = _debug_handle_data_frame
 
         try:
             cli.start()
