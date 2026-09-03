@@ -140,6 +140,11 @@ class FeishuSender:
                                 "\n👉 原因诊断 [19022 关键词匹配失败]:\n"
                                 "   你的飞书机器人开启了「自定义关键词」限制，请在设置中取消勾选。"
                             )
+                        elif code == 19007:
+                            error_hint = (
+                                "\n👉 原因诊断 [19007 机器人已被停用或删除]:\n"
+                                "   群里的自定义机器人已被移除或停用。请在群设置重新添加自定义机器人更新 FEISHU_WEBHOOK_URL，或者在 GitHub Secrets 中配置 FEISHU_APP_ID、FEISHU_APP_SECRET 和 FEISHU_CHAT_ID 改用企业自建应用推送。"
+                            )
 
                         logger.error(
                             f"Feishu webhook responded with error code {code}: {msg}{error_hint}"

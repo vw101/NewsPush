@@ -39,6 +39,9 @@ jobs:
           LLM_MODEL: ${{ secrets.LLM_MODEL || 'deepseek/deepseek-chat' }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID || 'oc_41144adb848366fd8a1ac77bc8d40d7d' }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "repository_dispatch" ]; then
             echo "Triggered on-demand: running with --force to ensure full 4-category coverage..."
