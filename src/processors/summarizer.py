@@ -124,8 +124,25 @@ class NewsSummarizer:
             return self._fallback_summarize(items, date_str)
 
     def _llm_summarize(self, items: List[NewsItem], date_str: str) -> DigestResult:
-        # Cap raw items sent to LLM prompt to top 20 items to keep prompt focused and prevent output token cutoff
-        capped_items = items[:20]
+        # Group items by category to ensure balanced representation across all 4 categories
+        category_order = ["industry", "skills", "frontier", "security"]
+        items_by_cat = {cat: [] for cat in category_order}
+        for it in items:
+            cat = it.category if it.category in items_by_cat else "industry"
+            items_by_cat[cat].append(it)
+
+        # Select up to 5 items per category so every category is guaranteed to be fed to the LLM
+        balanced_items = []
+        for cat in category_order:
+            balanced_items.extend(items_by_cat[cat][:5])
+
+        # If total is less than 20, fill with remaining unused items
+        if len(balanced_items) < 20:
+            used_ids = {it.id for it in balanced_items}
+            remaining = [it for it in items if it.id not in used_ids]
+            balanced_items.extend(remaining[: 20 - len(balanced_items)])
+
+        capped_items = balanced_items
         prepared_data = []
         for i, it in enumerate(capped_items, 1):
             prepared_data.append(
@@ -141,9 +158,9 @@ class NewsSummarizer:
             )
 
         user_content = (
-            f"以下是今天采集到的 {len(capped_items)} 条 AI 原始资讯列表（近 3 天）：\n"
+            f"以下是今天采集到的 {len(capped_items)} 条 AI 原始资讯列表（近 3 天，涵盖 4 大核心分类）：\n"
             f"{json.dumps(prepared_data, ensure_ascii=False, indent=2)}\n\n"
-            f"请挑选并生成 Top {self.config.summarizer.top_headlines_count} 头条，以及 4 大分类（industry, skills, frontier, security，每类最多 {self.config.summarizer.category_items_count} 条）精选内容。\n"
+            f"请挑选并生成 Top {self.config.summarizer.top_headlines_count} 头条，以及 4 大分类（industry, skills, frontier, security，每个分类必须选出 1~{self.config.summarizer.category_items_count} 条，严禁遗漏任何一个分类！）精选内容。\n"
             f"注意：进行语义去重（同一事件合并为一条并附带多信源），为每条生成 technical_mechanics、why_it_matters 与 2-4 个 #Tag 标签。务必输出纯 JSON。"
         )
 
