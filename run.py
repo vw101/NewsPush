@@ -108,6 +108,12 @@ def main() -> None:
         help="启动飞书事件监听 Web 服务 (FastAPI Server)，支持响应群内 @机器人 消息",
     )
     parser.add_argument(
+        "-w",
+        "--ws",
+        action="store_true",
+        help="启动飞书官方「长连接」WebSocket 监听模式，支持群内 @机器人 实时自动响应（无需公网IP/域名/服务器）",
+    )
+    parser.add_argument(
         "--config",
         type=str,
         default=None,
@@ -124,6 +130,11 @@ def main() -> None:
     setup_logging(args.verbose)
 
     config = load_config(config_path=args.config)
+
+    if args.ws:
+        from src.feishu_ws import start_ws
+        start_ws()
+        return
 
     if args.server:
         from src.server import start_server

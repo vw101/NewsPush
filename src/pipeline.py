@@ -22,7 +22,12 @@ class NewsPipeline:
         self.summarizer = NewsSummarizer(self.config)
         self.feishu_formatter = FeishuCardFormatter(self.config)
         self.markdown_formatter = MarkdownFormatter(self.config)
-        self.feishu_sender = FeishuSender(self.config.feishu_webhook_url)
+        self.feishu_sender = FeishuSender(
+            webhook_url=self.config.feishu_webhook_url,
+            app_id=self.config.feishu_app_id,
+            app_secret=self.config.feishu_app_secret,
+            chat_id=self.config.feishu_chat_id,
+        )
 
     def fetch_all(self) -> List[NewsItem]:
         """Fetch news concurrently from all enabled sources."""
@@ -49,7 +54,7 @@ class NewsPipeline:
         logger.info(f"Total raw items fetched: {len(all_items)}")
         return all_items
 
-    def run(self, dry_run: bool = False, force_push: bool = False) -> Dict[str, any]:
+    def run(self, dry_run: bool = False, force_push: bool = False, target_chat_id: Optional[str] = None) -> Dict[str, any]:
         """
         Execute full pipeline:
         Fetch -> Deduplicate -> Summarize -> Format -> Send -> Archive -> Update History.
@@ -95,7 +100,7 @@ class NewsPipeline:
             logger.info("[DRY RUN] Skipping Feishu push.")
         else:
             logger.info("Pushing interactive card to Feishu...")
-            send_success = self.feishu_sender.send(card_payload)
+            send_success = self.feishu_sender.send(card_payload, chat_id=target_chat_id)
 
         # 7. Update history
         if not dry_run:

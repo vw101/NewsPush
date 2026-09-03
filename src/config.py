@@ -46,9 +46,12 @@ class AppConfig:
         default_factory=lambda: os.getenv("LLM_MODEL", "deepseek/deepseek-chat")
     )
 
-    # Feishu Settings
+    # Feishu Settings (支持两种模式：企业自建应用 OpenAPI 或 群自定义 Webhook)
     feishu_webhook_url: str = field(default_factory=lambda: os.getenv("FEISHU_WEBHOOK_URL", ""))
     feishu_secret: str = field(default_factory=lambda: os.getenv("FEISHU_SECRET", ""))
+    feishu_app_id: str = field(default_factory=lambda: os.getenv("FEISHU_APP_ID", ""))
+    feishu_app_secret: str = field(default_factory=lambda: os.getenv("FEISHU_APP_SECRET", ""))
+    feishu_chat_id: str = field(default_factory=lambda: os.getenv("FEISHU_CHAT_ID", ""))
 
     # General App Settings
     app_title: str = "🤖 AI Daily Pulse · 每日早报"
