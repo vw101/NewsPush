@@ -1,13 +1,38 @@
+import inspect
 import json
 import logging
+import ssl
 import threading
 import httpx
 import lark_oapi as lark
+import lark_oapi.ws.client
 from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
+import websockets
 from src.config import AppConfig, load_config
 from src.pipeline import NewsPipeline
 
 logger = logging.getLogger(__name__)
+
+
+# 解决 macOS / 代理 / VPN 环境下 self-signed certificate in certificate chain 导致的 SSL 握手失败
+def _patch_lark_ws_ssl():
+    orig_kwargs_fn = getattr(lark_oapi.ws.client, "_ws_connect_kwargs", None)
+
+    def _safe_kwargs():
+        kw = orig_kwargs_fn() if orig_kwargs_fn else {}
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            kw["ssl"] = ctx
+        except Exception as e:
+            logger.warning(f"Failed to create unverified SSL context: {e}")
+        return kw
+
+    lark_oapi.ws.client._ws_connect_kwargs = _safe_kwargs
+
+
+_patch_lark_ws_ssl()
 
 
 class FeishuWebSocketListener:

@@ -42,6 +42,7 @@ class FeishuSender:
                 url,
                 json={"app_id": self.app_id, "app_secret": self.app_secret},
                 timeout=10.0,
+                verify=False,
             )
             data = resp.json()
             if data.get("code") == 0:
@@ -76,7 +77,7 @@ class FeishuSender:
 
         for attempt in range(1, max_retries + 1):
             try:
-                with httpx.Client(timeout=15.0) as client:
+                with httpx.Client(timeout=15.0, verify=False) as client:
                     resp = client.post(url, headers=headers, json=body)
                     resp.raise_for_status()
                     data = resp.json()
@@ -106,7 +107,7 @@ class FeishuSender:
 
         for attempt in range(1, max_retries + 1):
             try:
-                with httpx.Client(timeout=15.0) as client:
+                with httpx.Client(timeout=15.0, verify=False) as client:
                     resp = client.post(
                         self.webhook_url,
                         json=card_payload,
