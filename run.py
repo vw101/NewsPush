@@ -102,6 +102,12 @@ def main() -> None:
         help="仅测试飞书 Webhook 连通性，发送一张测试卡片",
     )
     parser.add_argument(
+        "-s",
+        "--server",
+        action="store_true",
+        help="启动飞书事件监听 Web 服务 (FastAPI Server)，支持响应群内 @机器人 消息",
+    )
+    parser.add_argument(
         "--config",
         type=str,
         default=None,
@@ -118,6 +124,11 @@ def main() -> None:
     setup_logging(args.verbose)
 
     config = load_config(config_path=args.config)
+
+    if args.server:
+        from src.server import start_server
+        start_server()
+        return
 
     if args.test_feishu:
         test_feishu(config)

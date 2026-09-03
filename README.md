@@ -102,32 +102,39 @@ python run.py --force
 
 ---
 
-## ☁️ 免费部署到 GitHub Actions (0 成本无服务器自动运行)
+## ☁️ 100% 部署到 GitHub Actions (0 成本无服务器自动运行)
 
-本项目预置了 GitHub Actions 工作流文件 [`.github/workflows/daily_push.yml`](.github/workflows/daily_push.yml)，每天北京时间 **08:30** 自动触发抓取、提炼与推送。
+本项目预置了 GitHub Actions 工作流文件 [`.github/workflows/daily_push.yml`](.github/workflows/daily_push.yml)，每天北京时间 **09:00** 自动触发抓取、提炼与推送。
 
 ### 部署步骤：
 
-1. 将本项目推送到你的 GitHub 私有/公开仓库：
-   ```bash
-   git init
-   git add .
-   git commit -m "feat: init ai news app"
-   git branch -M main
-   git remote add origin https://github.com/your-username/your-repo.git
-   git push -u origin main
-   ```
+1. 将本项目推送到你的 GitHub 私有/公开仓库 `https://github.com/vw101/NewsPush.git`
 2. 在 GitHub 仓库页面中，进入 **Settings -> Secrets and variables -> Actions**。
 3. 点击 **New repository secret**，添加以下密钥：
    - `LLM_API_KEY`: 你的大模型 API 密钥（如 DeepSeek key）
-   - `LLM_BASE_URL`: API 地址（如 `https://api.deepseek.com/v1`）
-   - `LLM_MODEL`: 模型名称（如 `deepseek-chat`）
+   - `LLM_BASE_URL`: API 地址（如 `https://openrouter.ai/api/v1`）
+   - `LLM_MODEL`: 模型名称（如 `deepseek/deepseek-chat`）
    - `FEISHU_WEBHOOK_URL`: 你的飞书群 Webhook 地址
    - `FEISHU_SECRET`: （可选）如启用了安全加签则填写
 4. 开启仓库自动提交权限（用于 Actions 自动同步历史去重记录）：
    - 进入 **Settings -> Actions -> General -> Workflow permissions**。
    - 勾选 **「Read and write permissions」** 并保存。
 5. 点击仓库顶部 **Actions** 标签页，在左侧选择 **AI Daily News Push**，点击 **Run workflow** 即可随时手动触发一次测试！
+
+---
+
+## ⚡ 100% GitHub 原生：飞书 @机器人 消息唤醒指南
+
+当你在飞书群内 `@机器人` 并且消息包含 **“新闻”**、**“News”** 或 **“news”** 时，可以直接通过 GitHub 官方 REST API 秒级唤醒 GitHub Actions 云端 Runner 执行全量新闻收集与卡片推送：
+
+```bash
+# 唤醒 GitHub Actions 的标准 REST API 请求
+curl -X POST \
+  -H "Authorization: token YOUR_GITHUB_PAT" \
+  -H "Accept: application/vnd.github.v3+json" \
+  https://api.github.com/repos/vw101/NewsPush/dispatches \
+  -d '{"event_type": "feishu_mention_news"}'
+```
 
 ---
 
