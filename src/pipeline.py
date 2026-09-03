@@ -99,14 +99,19 @@ class NewsPipeline:
 
         # 7. Update history
         if not dry_run:
-            self.deduplicator.mark_pushed(filtered_items)
-            logger.info("History cache updated.")
+            if send_success:
+                self.deduplicator.mark_pushed(filtered_items)
+                logger.info("History cache updated.")
+            else:
+                logger.error("Feishu push failed, skipping history update so items can be retried.")
 
         duration = (datetime.now() - start_time).total_seconds()
         logger.info(f"Pipeline finished in {duration:.2f}s.")
 
+        pipeline_status = "success" if (dry_run or send_success) else "send_failed"
+
         return {
-            "status": "success",
+            "status": pipeline_status,
             "scanned": len(raw_items),
             "new_items": len(filtered_items),
             "headlines": len(digest.top_headlines),

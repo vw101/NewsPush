@@ -153,6 +153,9 @@ def main() -> None:
     print(f" - 耗时: {result.get('duration_sec', 0):.2f} 秒")
     print("=" * 60)
 
+    if result.get("status") == "send_failed":
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
