@@ -8,6 +8,14 @@
 
 export default {
   async fetch(request, env, ctx) {
+    // 0. 支持浏览器直接打开 GET 检查健康状态
+    if (request.method === "GET") {
+      return new Response("🤖 Feishu Bot GitHub Actions Relay is RUNNING! Everything is ready.", {
+        status: 200,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
@@ -15,19 +23,19 @@ export default {
     try {
       const body = await request.json();
 
-      // 1. 响应飞书开放平台 URL 校验 Challenge 请求
+      // 1. 响应飞书开放平台 URL 校验 Challenge 请求 (支持各种版本)
       if (body.type === "url_verification" || body.challenge) {
         return new Response(JSON.stringify({ challenge: body.challenge }), {
           headers: { "Content-Type": "application/json" },
         });
       }
 
-      // 2. 监听消息接收事件 im.message.receive_v1
-      const header = body.header || {};
-      if (header.event_type === "im.message.receive_v1") {
+      // 2. 监听消息接收事件 (兼容 schema 2.0 的 im.message.receive_v1 与 schema 1.0)
+      const eventType = body.header?.event_type || body.event?.type;
+      if (eventType === "im.message.receive_v1" || eventType === "message") {
         const event = body.event || {};
-        const message = event.message || {};
-        const contentStr = message.content || "{}";
+        const message = event.message || event;
+        const contentStr = message.content || message.text || "{}";
 
         let text = "";
         try {
