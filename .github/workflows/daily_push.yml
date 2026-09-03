@@ -1,0 +1,53 @@
+name: AI Daily News Push
+
+on:
+  schedule:
+    # 每天北京时间 09:00 自动触发 (UTC 01:00)
+    - cron: "0 1 * * *"
+  workflow_dispatch: # 支持在 GitHub 网页手动点击触发
+
+jobs:
+  daily-digest:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # 允许自动提交更新 history.json 与 archives 简报
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run News Aggregator & Feishu Push
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || 'https://openrouter.ai/api/v1' }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL || 'deepseek/deepseek-chat' }}
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
+        run: |
+          python run.py
+
+      - name: Commit & Push Archives and History Cache
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/ archives/
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(archive): automated daily digest [skip ci]"
+            git push
+          fi

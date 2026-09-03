@@ -1,0 +1,98 @@
+# ==========================================
+# 每日 AI 资讯数据源配置列表 (4大全新板块)
+# ==========================================
+# 对应分类：
+# - industry: 🌐 AI 行业动态与重磅发布
+# - skills: 🔥 热门 AI Skill 与实战工具
+# - frontier: 🔬 前沿突破与开源风向
+# - security: 🛡️ AI 安全领域
+
+sources:
+  # ==========================================
+  # 1. AI 行业动态与重磅发布 (Industry & Labs)
+  # ==========================================
+  - name: "OpenAI Blog"
+    category: "industry"
+    type: "rss"
+    url: "https://openai.com/news/rss.xml"
+    enabled: true
+    max_items: 5
+
+  - name: "Google DeepMind"
+    category: "industry"
+    type: "rss"
+    url: "https://deepmind.google/blog/rss.xml"
+    enabled: true
+    max_items: 5
+
+  - name: "TechCrunch AI"
+    category: "industry"
+    type: "rss"
+    url: "https://techcrunch.com/category/artificial-intelligence/feed/"
+    enabled: true
+    max_items: 5
+
+  - name: "量子位"
+    category: "industry"
+    type: "rss"
+    url: "https://www.qbitai.com/feed"
+    enabled: true
+    max_items: 5
+
+  # ==========================================
+  # 2. 热门 AI Skill 与实战工具 (AI Skills & Tools)
+  # ==========================================
+  - name: "GitHub Trending AI (Agent/Prompt/Skills)"
+    category: "skills"
+    type: "github"
+    url: "https://api.github.com/search/repositories"
+    enabled: true
+    max_items: 6
+
+  - name: "Hacker News (Top AI Skills & Tools)"
+    category: "skills"
+    type: "hackernews"
+    url: "https://hn.algolia.com/api/v1/search_by_date"
+    enabled: true
+    max_items: 6
+
+  - name: "少数派 (AI 提效与 Skill 专题)"
+    category: "skills"
+    type: "rss"
+    url: "https://sspai.com/feed"
+    enabled: true
+    max_items: 5
+
+  # ==========================================
+  # 3. 前沿突破与开源风向 (Frontier & Open Source)
+  # ==========================================
+  - name: "Hugging Face Daily Papers"
+    category: "frontier"
+    type: "huggingface"
+    url: "https://huggingface.co/api/daily_papers"
+    enabled: true
+    max_items: 6
+
+  - name: "arXiv AI (cs.AI)"
+    category: "frontier"
+    type: "rss"
+    url: "https://rss.arxiv.org/rss/cs.AI"
+    enabled: true
+    max_items: 6
+
+  # ==========================================
+  # 4. AI 安全领域 (AI Safety & Alignment)
+  # ==========================================
+  - name: "arXiv Cryptography & Security (cs.CR)"
+    category: "security"
+    type: "rss"
+    url: "https://rss.arxiv.org/rss/cs.CR"
+    enabled: true
+    max_items: 5
+
+  - name: "AI Safety Newsletter & Alignment"
+    category: "security"
+    type: "rss"
+    url: "https://www.lesswrong.com/feed.xml?view=curated-rss"
+    enabled: true
+    max_items: 5

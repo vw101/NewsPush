@@ -1,0 +1,29 @@
+app:
+  name: "AI Daily Pulse"
+  title: "🤖 AI Daily Pulse · 每日早报"
+  timezone: "Asia/Shanghai"
+
+summarizer:
+  top_headlines_count: 3
+  category_items_count: 3
+  temperature: 0.3
+  max_tokens: 8000
+
+categories:
+  - id: "industry"
+    name: "🌐 AI 行业动态与重磅发布"
+    description: "科技巨头、初创公司动态、通用大模型发布与行业商业变更"
+  - id: "skills"
+    name: "🔥 热门 AI Skill 与实战工具"
+    description: "实用 Agent Skill、Prompt 技巧、Cursor/Claude 开发流与提效工具"
+  - id: "frontier"
+    name: "🔬 前沿突破与开源风向"
+    description: "GitHub Trending 热门项目、Hugging Face 论文精选与重大技术突破"
+  - id: "security"
+    name: "🛡️ AI 安全领域"
+    description: "AI 安全风险评估、Alignment 对齐研究、越狱/攻击防范与合规建设"
+
+storage:
+  history_file: "data/history.json"
+  archive_dir: "archives"
+  history_retention_days: 14
