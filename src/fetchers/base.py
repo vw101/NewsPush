@@ -58,12 +58,16 @@ class BaseFetcher(ABC):
         import email.utils
         dt = None
         try:
-            dt = email.utils.parsedate_to_datetime(date_str)
+            from dateutil import parser
+            dt = parser.parse(date_str)
         except Exception:
             try:
-                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                dt = email.utils.parsedate_to_datetime(date_str)
             except Exception:
-                return True
+                try:
+                    dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                except Exception:
+                    return True
 
         if dt:
             if dt.tzinfo is None:

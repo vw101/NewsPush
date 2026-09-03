@@ -1,5 +1,6 @@
 import json
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import pytest
 from src.config import AppConfig, load_config
@@ -14,6 +15,9 @@ def test_config_loading():
     config = load_config()
     assert config is not None
     assert len(config.categories) == 4
+    cat_ids = [c.id for c in config.categories]
+    assert cat_ids == ["industry", "skills", "frontier", "security"]
+    assert config.history_retention_days == 14
     assert len(config.sources) >= 5
     assert config.summarizer.top_headlines_count == 3
 
@@ -34,14 +38,24 @@ def test_base_fetcher_clean_text():
     assert clean == "Hello World & AI <test> Extra spaces"
 
 
+def test_is_within_days():
+    now = datetime.now(timezone.utc)
+    one_day_ago = (now - timedelta(days=1)).isoformat()
+    four_days_ago = (now - timedelta(days=4)).isoformat()
+
+    assert BaseFetcher.is_within_days(one_day_ago, days=3) is True
+    assert BaseFetcher.is_within_days(four_days_ago, days=3) is False
+    assert BaseFetcher.is_within_days(None, days=3) is True
+
+
 def test_deduplicator():
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
         temp_path = tf.name
 
     try:
-        dedup = Deduplicator(temp_path, retention_days=7)
+        dedup = Deduplicator(temp_path, retention_days=14)
         item1 = NewsItem(id="item1", title="T1", url="http://1", source_name="S1", category="industry")
-        item2 = NewsItem(id="item2", title="T2", url="http://2", source_name="S2", category="industry")
+        item2 = NewsItem(id="item2", title="T2", url="http://2", source_name="S2", category="skills")
 
         # Initially both are unseen
         unseen = dedup.filter_unseen([item1, item2])
@@ -56,12 +70,24 @@ def test_deduplicator():
         assert unseen_next[0].id == "item2"
 
         # Reload deduplicator from disk
-        dedup_reloaded = Deduplicator(temp_path, retention_days=7)
+        dedup_reloaded = Deduplicator(temp_path, retention_days=14)
         unseen_reloaded = dedup_reloaded.filter_unseen([item1, item2])
         assert len(unseen_reloaded) == 1
         assert unseen_reloaded[0].id == "item2"
     finally:
         Path(temp_path).unlink(missing_ok=True)
+
+
+def test_robust_json_load():
+    # Test valid JSON
+    valid = '{"top_headlines": [{"title": "Test"}]}'
+    res = NewsSummarizer._robust_json_load(valid)
+    assert "top_headlines" in res
+
+    # Test auto-repair of unclosed quote and braces
+    truncated = '{"top_headlines": [{"title": "Test'
+    repaired = NewsSummarizer._robust_json_load(truncated)
+    assert "top_headlines" in repaired
 
 
 def test_summarizer_fallback():
@@ -70,13 +96,16 @@ def test_summarizer_fallback():
 
     items = [
         NewsItem(id="1", title="AI Model Release", url="http://a.com", source_name="OpenAI", category="industry", summary="Released new model"),
-        NewsItem(id="2", title="New Repo", url="http://b.com", source_name="GitHub", category="opensource", summary="Open source project"),
+        NewsItem(id="2", title="Cursor Skill Repo", url="http://b.com", source_name="GitHub", category="skills", summary="Agent skill"),
+        NewsItem(id="3", title="SOTA Paper", url="http://c.com", source_name="HuggingFace", category="frontier", summary="Paper summary"),
+        NewsItem(id="4", title="Safety Eval", url="http://d.com", source_name="LessWrong", category="security", summary="Safety analysis"),
     ]
 
     result = summarizer.summarize(items)
     assert isinstance(result, DigestResult)
     assert len(result.top_headlines) > 0
-    assert "202" in result.date_str
+    assert "industry" in result.categorized_items
+    assert "skills" in result.categorized_items
 
 
 def test_feishu_card_formatter():
@@ -84,26 +113,30 @@ def test_feishu_card_formatter():
     formatter = FeishuCardFormatter(config)
 
     digest = DigestResult(
-        date_str="2026年09月02日 星期三",
+        date_str="2026年09月03日 星期四",
         top_headlines=[
             DigestItem(
-                title="DeepSeek 推出新算法",
-                summary="推理效率提升 50%",
+                title="DeepSeek 推出新架构",
+                summary="推理效率提升 60%",
                 why_it_matters="降低开源模型使用成本",
+                technical_mechanics="解耦 Attention 机制压低 KV-Cache",
                 url="https://example.com/deepseek",
                 source="GitHub",
                 category="industry",
+                tags=["#Inference", "#MoE"],
             )
         ],
         categorized_items={
-            "opensource": [
+            "skills": [
                 DigestItem(
-                    title="vLLM 新增多模态支持",
-                    summary="大幅提升吞吐",
-                    why_it_matters="生产环境加速",
-                    url="https://example.com/vllm",
+                    title="Agent Skill 最佳实践",
+                    summary="提高生产力",
+                    why_it_matters="实战提效",
+                    technical_mechanics="利用自动化工作流加速迭代",
+                    url="https://example.com/skill",
                     source="GitHub",
-                    category="opensource",
+                    category="skills",
+                    tags=["#Agent", "#Skill"],
                 )
             ]
         },
@@ -116,27 +149,49 @@ def test_feishu_card_formatter():
     assert len(card["card"]["elements"]) > 0
 
 
-def test_markdown_formatter():
+def test_markdown_formatter_with_frontmatter():
     config = load_config()
     formatter = MarkdownFormatter(config)
 
     digest = DigestResult(
-        date_str="2026年09月02日 星期三",
+        date_str="2026年09月03日 星期四",
         top_headlines=[
             DigestItem(
                 title="GPT-5 预览版发布",
                 summary="逻辑推理突破",
                 why_it_matters="开启新一代生产力",
+                technical_mechanics="新架构提升复杂推理能力",
                 url="https://example.com/gpt5",
                 source="OpenAI Blog",
                 category="industry",
+                tags=["#LLM", "#GPT"],
             )
         ],
-        categorized_items={},
+        categorized_items={
+            "security": [
+                DigestItem(
+                    title="AI 对齐防越狱评估",
+                    summary="最新红队安全测试",
+                    why_it_matters="防止越狱攻击",
+                    technical_mechanics="多轮提示注入防御体系",
+                    url="https://example.com/safety",
+                    source="AI Safety",
+                    category="security",
+                    tags=["#AISafety", "#RedTeaming"],
+                )
+            ]
+        },
         total_scanned=5,
     )
 
     md = formatter.format_markdown(digest)
+    # Check YAML Frontmatter
+    assert md.startswith("---\n")
+    assert "title:" in md
+    assert "date:" in md
+    assert "tags:" in md
+    assert "scanned_items: 5" in md
+    assert "#AISafety" in md
     assert "# 🤖 AI Daily Pulse" in md
     assert "GPT-5 预览版发布" in md
     assert "https://example.com/gpt5" in md
@@ -155,7 +210,7 @@ def test_pipeline_dry_run_with_mock():
         pipeline = NewsPipeline(config)
         mock_items = [
             NewsItem(id="mock1", title="Mock AI Breakthrough", url="https://mock.com/1", source_name="MockLab", category="industry", summary="Summary 1"),
-            NewsItem(id="mock2", title="Mock Open Source Agent", url="https://mock.com/2", source_name="GitHub", category="opensource", summary="Summary 2"),
+            NewsItem(id="mock2", title="Mock Open Source Agent", url="https://mock.com/2", source_name="GitHub", category="skills", summary="Summary 2"),
         ]
 
         with patch.object(pipeline, "fetch_all", return_value=mock_items):
@@ -166,4 +221,5 @@ def test_pipeline_dry_run_with_mock():
             assert res["dry_run"] is True
 
     Path(config.history_file).unlink(missing_ok=True)
+
 

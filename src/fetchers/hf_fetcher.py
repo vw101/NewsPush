@@ -48,8 +48,9 @@ class HuggingFaceFetcher(BaseFetcher):
                 authors = [a.get("name", "") for a in paper.get("authors", [])[:3]]
                 authors_str = ", ".join(filter(None, authors))
 
-                url = f"https://huggingface.co/papers/{paper_id}" if paper_id else "https://huggingface.co/papers"
                 pub_date = paper.get("publishedAt", "")
+                if pub_date and not self.is_within_days(pub_date, days=3):
+                    continue
 
                 formatted_summary = (
                     f"论文作者: {authors_str} | 社区点赞: {upvotes} | 核心摘要: {summary[:300]}"

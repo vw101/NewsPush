@@ -166,22 +166,56 @@ class NewsSummarizer:
         try:
             return json.loads(clean_json)
         except json.JSONDecodeError:
-            # Auto-repair unclosed quotes and brackets if truncated
             s = clean_json.strip()
-            if s.count('"') % 2 != 0:
+            in_string = False
+            escape = False
+            stack = []
+            for ch in s:
+                if escape:
+                    escape = False
+                    continue
+                if ch == "\\":
+                    escape = True
+                    continue
+                if ch == '"':
+                    in_string = not in_string
+                    continue
+                if not in_string:
+                    if ch in "{[":
+                        stack.append(ch)
+                    elif ch == "}" and stack and stack[-1] == "{":
+                        stack.pop()
+                    elif ch == "]" and stack and stack[-1] == "[":
+                        stack.pop()
+
+            if in_string:
                 s += '"'
-            open_brackets = s.count("[") - s.count("]")
-            open_braces = s.count("{") - s.count("}")
-            s += "]" * max(0, open_brackets)
-            s += "}" * max(0, open_braces)
+
+            while stack:
+                open_ch = stack.pop()
+                s += "}" if open_ch == "{" else "]"
+
             try:
                 return json.loads(s)
             except json.JSONDecodeError:
                 last_brace = clean_json.rfind("}")
                 if last_brace != -1:
                     truncated = clean_json[: last_brace + 1]
-                    open_braces_t = truncated.count("{") - truncated.count("}")
-                    truncated += "}" * max(0, open_braces_t)
+                    t_stack = []
+                    t_in_str = False
+                    for ch in truncated:
+                        if ch == '"':
+                            t_in_str = not t_in_str
+                        elif not t_in_str:
+                            if ch in "{[":
+                                t_stack.append(ch)
+                            elif ch == "}" and t_stack and t_stack[-1] == "{":
+                                t_stack.pop()
+                            elif ch == "]" and t_stack and t_stack[-1] == "[":
+                                t_stack.pop()
+                    while t_stack:
+                        op = t_stack.pop()
+                        truncated += "}" if op == "{" else "]"
                     return json.loads(truncated)
                 raise
 
