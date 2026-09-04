@@ -120,6 +120,12 @@ def main() -> None:
         help="指定配置文件路径 (默认 config/config.yaml)",
     )
     parser.add_argument(
+        "--chat-id",
+        type=str,
+        default=None,
+        help="指定推送的目标飞书群 Chat ID",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -151,7 +157,7 @@ def main() -> None:
     print("=" * 60)
 
     pipeline = NewsPipeline(config)
-    result = pipeline.run(dry_run=args.dry_run, force_push=args.force)
+    result = pipeline.run(dry_run=args.dry_run, force_push=args.force, target_chat_id=args.chat_id)
 
     print("\n" + "=" * 60)
     print("📊 执行结果汇总:")

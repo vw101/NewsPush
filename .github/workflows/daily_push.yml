@@ -45,9 +45,18 @@ jobs:
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID || 'oc_41144adb848366fd8a1ac77bc8d40d7d' }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "Triggered on-demand: running with --force to ensure full 4-category coverage..."
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Triggered manually via workflow_dispatch: running with --force..."
             python run.py --force
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "Triggered on-demand via repository_dispatch..."
+            TARGET_CHAT="${{ github.event.client_payload.chat_id }}"
+            if [ -n "$TARGET_CHAT" ]; then
+              echo "Target chat id: $TARGET_CHAT"
+              python run.py --force --chat-id "$TARGET_CHAT"
+            else
+              python run.py --force
+            fi
           else
             python run.py
           fi
