@@ -163,13 +163,17 @@ class NewsSummarizer:
             f"注意：进行语义去重（同一事件合并为一条并附带多信源），为每条生成 summary、detailed_content、technical_mechanics 与 2-3 个 #Tag 标签。务必输出纯 JSON。"
         )
 
-        models_to_try = [
-            self.config.llm_model,
-            "google/gemini-2.0-flash-exp:free",
-            "deepseek/deepseek-chat:free",
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "qwen/qwen-2.5-72b-instruct:free",
-        ]
+        models_to_try = [self.config.llm_model]
+        # 仅当用户未指定或指定的模型是免费通道（包含 :free）时，才启用自动容灾备用池
+        if not self.config.llm_model or ":free" in self.config.llm_model:
+            for fallback in [
+                "google/gemini-2.0-flash-exp:free",
+                "deepseek/deepseek-chat:free",
+                "meta-llama/llama-3.3-70b-instruct:free",
+                "qwen/qwen-2.5-72b-instruct:free",
+            ]:
+                if fallback not in models_to_try:
+                    models_to_try.append(fallback)
         candidate_models = []
         for m in models_to_try:
             if m and m not in candidate_models:
