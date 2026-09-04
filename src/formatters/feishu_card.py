@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List
 from src.config import AppConfig
 from src.processors.summarizer import DigestItem, DigestResult
 
@@ -67,51 +67,58 @@ class FeishuCardFormatter:
             },
         ]
 
-        # Use column_set with a left spacer column so wrapped lines strictly align with the title boundary
-        indented_block = {
-            "tag": "column_set",
-            "flex_mode": "none",
-            "horizontal_spacing": "small",
-            "columns": [
-                {
-                    "tag": "column",
-                    "width": "auto",
-                    "elements": [
-                        {
-                            "tag": "markdown",
-                            "content": "　",
-                        }
-                    ],
-                },
-                {
-                    "tag": "column",
-                    "width": "weighted",
-                    "weight": 1,
-                    "elements": inner_elements,
-                },
-            ],
-        }
-
-        return [indented_block]
+        return inner_elements
 
     def format_card(self, digest: DigestResult) -> Dict[str, Any]:
         elements = []
 
-        # 1. Top Headlines Section (今日必读头条)
-        if digest.top_headlines:
-            elements.append(
+        def build_section(title_text: str, items: List[DigestItem], is_headline: bool = False):
+            sec_elements = [
                 {
                     "tag": "markdown",
-                    "content": "**🔶 今日最重磅头条 (Top Headlines)**",
+                    "content": f"**{title_text}**",
+                }
+            ]
+            col_elements = []
+            for idx, item in enumerate(items, 1):
+                prefix = f"{idx}. " if is_headline else "• "
+                col_elements.extend(self._build_news_block(item, index_prefix=prefix))
+                if idx < len(items):
+                    col_elements.append({"tag": "hr"})
+
+            sec_elements.append(
+                {
+                    "tag": "column_set",
+                    "flex_mode": "none",
+                    "horizontal_spacing": "small",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "auto",
+                            "elements": [
+                                {
+                                    "tag": "markdown",
+                                    "content": "　",
+                                }
+                            ],
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "weight": 1,
+                            "elements": col_elements,
+                        },
+                    ],
                 }
             )
+            sec_elements.append({"tag": "hr"})
+            return sec_elements
 
-            for idx, item in enumerate(digest.top_headlines, 1):
-                elements.extend(self._build_news_block(item, index_prefix=f"{idx}. "))
-                if idx < len(digest.top_headlines):
-                    elements.append({"tag": "hr"})
-
-            elements.append({"tag": "hr"})
+        # 1. Top Headlines Section (今日必读头条)
+        if digest.top_headlines:
+            elements.extend(
+                build_section("🔶 今日最重磅头条 (Top Headlines)", digest.top_headlines, is_headline=True)
+            )
 
         # Category Name Mapping
         cat_meta = {cat.id: cat.name for cat in self.config.categories}
@@ -124,19 +131,7 @@ class FeishuCardFormatter:
                 continue
 
             cat_title = cat_meta.get(cat_id, cat_id.capitalize())
-            elements.append(
-                {
-                    "tag": "markdown",
-                    "content": f"**{cat_title}**",
-                }
-            )
-
-            for idx, item in enumerate(items, 1):
-                elements.extend(self._build_news_block(item, index_prefix="• "))
-                if idx < len(items):
-                    elements.append({"tag": "hr"})
-
-            elements.append({"tag": "hr"})
+            elements.extend(build_section(cat_title, items, is_headline=False))
 
         # 3. Footer Note
         elements.append(

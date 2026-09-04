@@ -167,10 +167,14 @@ class NewsSummarizer:
         # 仅当用户未指定或指定的模型是免费通道（包含 :free）时，才启用自动容灾备用池
         if not self.config.llm_model or ":free" in self.config.llm_model:
             for fallback in [
-                "google/gemini-2.0-flash-exp:free",
+                "google/gemma-4-31b-it:free",
+                "google/gemma-4-26b-a4b-it:free",
+                "z-ai/glm-5.2:free",
+                "minimax/minimax-m3:free",
+                "minimax/minimax-m2.7:free",
+                "nvidia/nemotron-3.5-lightning:free",
                 "deepseek/deepseek-chat:free",
-                "meta-llama/llama-3.3-70b-instruct:free",
-                "qwen/qwen-2.5-72b-instruct:free",
+                "google/gemini-2.0-flash-exp:free",
             ]:
                 if fallback not in models_to_try:
                     models_to_try.append(fallback)
