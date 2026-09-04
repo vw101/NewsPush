@@ -163,19 +163,42 @@ class NewsSummarizer:
             f"注意：进行语义去重（同一事件合并为一条并附带多信源），为每条生成 summary、detailed_content、technical_mechanics 与 2-3 个 #Tag 标签。务必输出纯 JSON。"
         )
 
-        response = self.client.chat.completions.create(
-            model=self.config.llm_model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=self.config.summarizer.temperature,
-            max_tokens=self.config.summarizer.max_tokens,
-            response_format={"type": "json_object"} if "deepseek" not in self.config.llm_model.lower() else None,
-        )
+        models_to_try = [
+            self.config.llm_model,
+            "google/gemini-2.0-flash-exp:free",
+            "deepseek/deepseek-chat:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "qwen/qwen-2.5-72b-instruct:free",
+        ]
+        candidate_models = []
+        for m in models_to_try:
+            if m and m not in candidate_models:
+                candidate_models.append(m)
 
-        raw_output = response.choices[0].message.content or ""
-        return self._parse_llm_json(raw_output, items, date_str)
+        last_err = None
+        for model_name in candidate_models:
+            try:
+                logger.info(f"Invoking free LLM model: {model_name}...")
+                use_json_mode = "deepseek" not in model_name.lower()
+                response = self.client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_content},
+                    ],
+                    temperature=self.config.summarizer.temperature,
+                    max_tokens=self.config.summarizer.max_tokens,
+                    response_format={"type": "json_object"} if use_json_mode else None,
+                )
+
+                raw_output = response.choices[0].message.content or ""
+                logger.info(f"Free model {model_name} responded successfully!")
+                return self._parse_llm_json(raw_output, items, date_str)
+            except Exception as e:
+                logger.warning(f"Model {model_name} failed: {e}. Trying next free model...")
+                last_err = e
+
+        raise last_err or RuntimeError("All candidate LLM models failed.")
 
     @staticmethod
     def _robust_json_load(clean_json: str) -> dict:

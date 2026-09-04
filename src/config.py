@@ -43,7 +43,7 @@ class AppConfig:
         default_factory=lambda: os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
     )
     llm_model: str = field(
-        default_factory=lambda: os.getenv("LLM_MODEL", "deepseek/deepseek-chat")
+        default_factory=lambda: os.getenv("LLM_MODEL", "google/gemini-2.0-flash-exp:free")
     )
 
     # Feishu Settings (支持两种模式：企业自建应用 OpenAPI 或 群自定义 Webhook)
