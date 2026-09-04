@@ -45,9 +45,15 @@ export default {
           text = contentStr;
         }
 
-        // 检测包含 "新闻", "News", "news" 关键字
+        // 检测包含 "新闻", "早报", "资讯", "news" 等关键字，或群内直接 @ 机器人
         const lowerText = text.toLowerCase();
-        const hasKeyword = lowerText.includes("新闻") || lowerText.includes("news");
+        const hasKeyword =
+          lowerText.includes("新闻") ||
+          lowerText.includes("news") ||
+          lowerText.includes("早报") ||
+          lowerText.includes("资讯") ||
+          lowerText.includes("日报") ||
+          text.trim().length > 0;
 
         if (hasKeyword) {
           console.log("检测到飞书群 @机器人 新闻触发消息，准备唤醒 GitHub Actions...");
