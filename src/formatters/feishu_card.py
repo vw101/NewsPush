@@ -16,61 +16,60 @@ class FeishuCardFormatter:
         self.config = config
 
     def _build_news_block(self, item: DigestItem, index_prefix: str = "") -> list:
-        """Build a modular news item block with title, core summary, impact, tags, collapsible text, and link."""
-        title_text = f"**{index_prefix}{item.title}**"
-
-        tags_str = " ".join([f"`{t}`" for t in item.tags]) if item.tags else ""
-        tags_line = f"\n🏷️ **标签**：{tags_str}" if tags_str else ""
-
-        main_text = (
-            f"{title_text}\n"
-            f"💡 **核心事实**：{item.summary}\n"
-            f"🎯 **宏观影响/实战价值**：{item.why_it_matters}"
-            f"{tags_line}"
-        )
-
+        """Build a mobile-first modular news block with large font title, hook, native collapsible detail, and subtle meta."""
+        # 1. Headline & Hook (Large 16px bold title + 15px hook)
+        title_content = f"### {index_prefix}{item.title}\n\n📌 **一句话速览**：{item.summary}"
         elements = [
             {
-                "tag": "div",
-                "text": {
-                    "tag": "lark_md",
-                    "content": main_text,
-                },
-            },
+                "tag": "markdown",
+                "content": title_content,
+            }
         ]
 
-        # Detailed content in collapsible panel including technical mechanics
-        detailed_body = item.technical_mechanics or item.detailed_content or item.summary
+        # 2. Detailed content inside native collapsible panel
+        facts_text = item.detailed_content or item.why_it_matters or item.summary
+        mechanics_text = item.technical_mechanics or "持续关注该项目后续架构演进与实践。"
+
+        detail_markdown = (
+            f"📖 **具体实况进展**：\n{facts_text}\n\n"
+            f"⚙️ **底层技术机制**：\n{mechanics_text}"
+        )
+
         elements.append(
             {
                 "tag": "collapsible_panel",
                 "expanded": False,
+                "background_color": "grey",
                 "header": {
                     "title": {
                         "tag": "plain_text",
-                        "content": "📖 展开阅读机制/技巧/安全深度解析",
+                        "content": "展开完整报道与底层机制",
                     },
+                    "icon": {
+                        "tag": "standard_icon",
+                        "token": "down-round_outlined",
+                    },
+                    "icon_position": "follow_text",
+                    "icon_expanded_angle": -180,
                 },
                 "elements": [
                     {
-                        "tag": "div",
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"{detailed_body}\n\n---\n{item.detailed_content}",
-                        },
+                        "tag": "markdown",
+                        "content": detail_markdown,
                     }
                 ],
             }
         )
 
-        # Direct link row below for quick access
+        # 3. Subtle grey metadata footer
+        tags_str = " ".join([f"#{t.lstrip('#')}" for t in item.tags]) if item.tags else ""
+        tags_part = f" · {tags_str}" if tags_str else ""
+        meta_content = f"<font color='grey'>💬 {item.source}{tags_part} · [原文 ↗]({item.url})</font>"
+
         elements.append(
             {
-                "tag": "div",
-                "text": {
-                    "tag": "lark_md",
-                    "content": f"🏷️ *信源：{item.source}* · [🌐 直达原文 ↗]({item.url})",
-                },
+                "tag": "markdown",
+                "content": meta_content,
             }
         )
 
@@ -79,15 +78,12 @@ class FeishuCardFormatter:
     def format_card(self, digest: DigestResult) -> Dict[str, Any]:
         elements = []
 
-        # 1. Top 3 Headlines Section (今日必读头条)
+        # 1. Top Headlines Section (今日必读头条)
         if digest.top_headlines:
             elements.append(
                 {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": "**🔥 今日最重磅头条 (Top Headlines)**",
-                    },
+                    "tag": "markdown",
+                    "content": "**🔶 今日最重磅头条 (Top Headlines)**",
                 }
             )
 
@@ -111,11 +107,8 @@ class FeishuCardFormatter:
             cat_title = cat_meta.get(cat_id, cat_id.capitalize())
             elements.append(
                 {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"**{cat_title}**",
-                    },
+                    "tag": "markdown",
+                    "content": f"**{cat_title}**",
                 }
             )
 
@@ -129,33 +122,30 @@ class FeishuCardFormatter:
         # 3. Footer Note
         elements.append(
             {
-                "tag": "note",
-                "elements": [
-                    {
-                        "tag": "plain_text",
-                        "content": (
-                            f"🤖 AI Daily Pulse 全自动中文精编 · 本期扫描 {digest.total_scanned} 篇全球信源"
-                        ),
-                    }
-                ],
+                "tag": "markdown",
+                "content": "<font color='grey'>✦ AI Daily Pulse · 30秒无感精读全球 AI 浪潮</font>",
             }
         )
 
         card_payload = {
             "msg_type": "interactive",
             "card": {
+                "schema": "2.0",
                 "config": {
                     "wide_screen_mode": True,
                     "enable_forward": True,
                 },
                 "header": {
-                    "template": "indigo",
+                    "template": "wathet",
                     "title": {
                         "tag": "plain_text",
                         "content": f"{self.config.app_title} ({digest.date_str})",
                     },
                 },
-                "elements": elements,
+                "body": {
+                    "direction": "vertical",
+                    "elements": elements,
+                },
             },
         }
 

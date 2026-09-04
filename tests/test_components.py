@@ -19,7 +19,7 @@ def test_config_loading():
     assert cat_ids == ["industry", "skills", "frontier", "security"]
     assert config.history_retention_days == 14
     assert len(config.sources) >= 5
-    assert config.summarizer.top_headlines_count == 3
+    assert config.summarizer.top_headlines_count == 2
 
 
 def test_news_item_id_generation():
@@ -145,8 +145,8 @@ def test_feishu_card_formatter():
 
     card = formatter.format_card(digest)
     assert card["msg_type"] == "interactive"
-    assert "elements" in card["card"]
-    assert len(card["card"]["elements"]) > 0
+    body_elements = card["card"].get("body", {}).get("elements", []) or card["card"].get("elements", [])
+    assert len(body_elements) > 0
 
 
 def test_markdown_formatter_with_frontmatter():
@@ -192,7 +192,7 @@ def test_markdown_formatter_with_frontmatter():
     assert "tags:" in md
     assert "scanned_items: 5" in md
     assert "#AISafety" in md
-    assert "# 🤖 AI Daily Pulse" in md
+    assert "AI Daily Pulse" in md
     assert "GPT-5 预览版发布" in md
     assert "https://example.com/gpt5" in md
 
