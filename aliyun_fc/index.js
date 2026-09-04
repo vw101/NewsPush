@@ -2,13 +2,14 @@
  * 阿里云函数计算 FC 3.0 / 2.0: 飞书事件回调与 GitHub Actions 点火网关
  * 
  * 核心设计：
- * 1. 【双模自适应】：同时兼容 Web 函数 (req, resp) 与事件函数 (event, context)，开箱即用零踩坑。
+ * 1. 【Web 函数端口监听】：启动 HTTP Server 监听 9000 端口（解决 node index.js 执行后直接退出导致的 412 CAExited / 3秒超时问题）。
  * 2. 【50ms 秒级握手】：收到飞书 url_verification challenge 时，极速原样返回，彻底解决“3秒超时”问题。
  * 3. 【即时群内冒泡】：群内收到 @指令 后，200ms 内先在群里发送“正在全网检索”提示，消除等待焦虑。
  * 4. 【异步点火】：调用 GitHub API 唤醒 GitHub Actions (repository_dispatch)，启动云端容器抓取、AI 总结并推送大卡片。
- * 5. 【环境变量注入】：通过 process.env 安全读取密钥，代码无任何硬编码。
+ * 5. 【双模兼容】：同时导出 exports.handler，兼容事件函数模式。
  */
 
+const http = require('http');
 const https = require('https');
 
 // 从环境变量读取配置
@@ -16,6 +17,7 @@ const GITHUB_REPO = process.env.GITHUB_REPO || 'vw101/NewsPush';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || '';
 const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || '';
+const PORT = process.env.FC_SERVER_PORT || 9000;
 
 // 基础 HTTPS POST 请求封装（纯原生，零第三方 npm 依赖）
 function httpsPost(urlStr, headers, bodyObj) {
@@ -125,7 +127,7 @@ async function triggerGitHubActions(chatId, rawText) {
   }
 }
 
-// 业务核心入口
+// 业务核心处理逻辑
 async function processRequest(method, rawBody) {
   if (method === 'GET') {
     return {
@@ -196,46 +198,39 @@ async function processRequest(method, rawBody) {
   };
 }
 
-/**
- * 阿里云 FC 入口（双模自适应）
- */
-exports.handler = async (arg1, arg2, context) => {
-  // 判断是否为 Web 函数模式：arg1 是 req，arg2 是 resp
-  if (arg2 && typeof arg2.send === 'function') {
-    const req = arg1;
-    const resp = arg2;
+// 1. 创建 HTTP 服务器（监听 9000 端口，满足 FC Web 函数容器化要求）
+const server = http.createServer((req, res) => {
+  let bodyChunks = [];
+  req.on('data', chunk => bodyChunks.push(chunk));
+  req.on('end', async () => {
     try {
-      const result = await processRequest(req.method, req.body);
-      resp.setStatusCode(result.statusCode);
-      for (const [k, v] of Object.entries(result.headers)) {
-        resp.setHeader(k, v);
-      }
-      resp.send(result.body);
+      const rawBody = Buffer.concat(bodyChunks).toString('utf-8');
+      const result = await processRequest(req.method, rawBody);
+      res.writeHead(result.statusCode, result.headers);
+      res.end(result.body);
     } catch (err) {
-      console.error('处理发生异常:', err);
-      resp.setStatusCode(200);
-      resp.setHeader('Content-Type', 'application/json');
-      resp.send(JSON.stringify({ msg: 'error', detail: err.message }));
+      console.error('Server 处理异常:', err);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ msg: 'error', detail: err.message }));
     }
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`🚀 阿里云 FC Web 函数服务正在监听端口: ${PORT}`);
+});
+
+// 2. 同时导出 exports.handler，兼容事件函数模式
+exports.handler = async (arg1, arg2, context) => {
+  if (arg2 && typeof arg2.send === 'function') {
+    const result = await processRequest(arg1.method, arg1.body);
+    arg2.setStatusCode(result.statusCode);
+    for (const [k, v] of Object.entries(result.headers)) {
+      arg2.setHeader(k, v);
+    }
+    arg2.send(result.body);
     return;
   }
-
-  // 事件函数 (Event Function) 模式：arg1 是 event Buffer/string
-  try {
-    let eventStr = arg1 ? (Buffer.isBuffer(arg1) ? arg1.toString('utf-8') : arg1) : '{}';
-    let eventObj = {};
-    try { eventObj = JSON.parse(eventStr); } catch (e) { eventObj = {}; }
-
-    const method = eventObj.httpMethod || eventObj.method || 'POST';
-    const rawBody = eventObj.body || eventStr;
-
-    return await processRequest(method, rawBody);
-  } catch (err) {
-    console.error('事件函数处理异常:', err);
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ msg: 'error', detail: err.message }),
-    };
-  }
+  let eventStr = arg1 ? (Buffer.isBuffer(arg1) ? arg1.toString('utf-8') : arg1) : '{}';
+  return await processRequest('POST', eventStr);
 };
