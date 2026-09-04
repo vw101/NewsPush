@@ -4,8 +4,8 @@ app:
   timezone: "Asia/Shanghai"
 
 summarizer:
-  top_headlines_count: 2
-  category_items_count: 2
+  top_headlines_count: 3
+  category_items_count: 4
   temperature: 0.3
   max_tokens: 8000
 

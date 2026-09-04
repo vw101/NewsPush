@@ -40,9 +40,9 @@ SYSTEM_PROMPT = """你是一位顶尖的 AI 科技主编、AI 行业战略分析
 【核心原则】
 1. **全中文化要求**：不管原始新闻是中文还是英文，所有输出内容必须全部转化为自然、专业、地道的中文。
 2. **跨信源语义去重与合并**：若多条原始资讯报道的是同一个重大事件，请自动合并为 1 条精炼条目，并在 `source` 字段中列出所有信源名称（如 "OpenAI Blog / HackerNews"）。
-3. **结构化产出 4 大核心板块（精编 6~8 条）**：
-   - 评选出 2 条今日最具全球影响力的【今日最重磅头条 (top_headlines)】。
-   - 分类整理精选要点 (categorized_items)，每类精选 1~2 条最具价值的内容：
+3. **结构化产出 4 大核心板块（每类 3~5 条）**：
+   - 评选出 3 条今日最具全球影响力的【今日最重磅头条 (top_headlines)】。
+   - 分类整理精选要点 (categorized_items)，每个分类必须精选 3~5 条最具价值的内容，严禁少于 3 条：
      * "industry" (🔷 行业动态与重磅发布)
      * "skills" (🟢 热门 AI Skill 与实战工具)
      * "frontier" (🟣 前沿突破与开源风向)
@@ -130,16 +130,16 @@ class NewsSummarizer:
             cat = it.category if it.category in items_by_cat else "industry"
             items_by_cat[cat].append(it)
 
-        # Select up to 5 items per category so every category is guaranteed to be fed to the LLM
+        # Select up to 7 items per category so LLM has ample choices to select 3~5 items per category
         balanced_items = []
         for cat in category_order:
-            balanced_items.extend(items_by_cat[cat][:5])
+            balanced_items.extend(items_by_cat[cat][:7])
 
-        # If total is less than 20, fill with remaining unused items
-        if len(balanced_items) < 20:
+        # If total is less than 25, fill with remaining unused items
+        if len(balanced_items) < 25:
             used_ids = {it.id for it in balanced_items}
             remaining = [it for it in items if it.id not in used_ids]
-            balanced_items.extend(remaining[: 20 - len(balanced_items)])
+            balanced_items.extend(remaining[: 25 - len(balanced_items)])
 
         capped_items = balanced_items
         prepared_data = []
@@ -159,8 +159,8 @@ class NewsSummarizer:
         user_content = (
             f"以下是今天采集到的 {len(capped_items)} 条 AI 原始资讯列表（近 3 天，涵盖 4 大核心分类）：\n"
             f"{json.dumps(prepared_data, ensure_ascii=False, indent=2)}\n\n"
-            f"请挑选并生成 Top {self.config.summarizer.top_headlines_count} 头条，以及 4 大分类（industry, skills, frontier, security，每个分类必须选出 1~{self.config.summarizer.category_items_count} 条，严禁遗漏任何一个分类！）精选内容。\n"
-            f"注意：进行语义去重（同一事件合并为一条并附带多信源），为每条生成 technical_mechanics、why_it_matters 与 2-4 个 #Tag 标签。务必输出纯 JSON。"
+            f"请挑选并生成 Top {self.config.summarizer.top_headlines_count} 头条，以及 4 大分类（industry, skills, frontier, security，每个分类必须选出 3~5 条精选内容，严禁少于 3 条，严禁遗漏任何一个分类！）。\n"
+            f"注意：进行语义去重（同一事件合并为一条并附带多信源），为每条生成 summary、detailed_content、technical_mechanics 与 2-3 个 #Tag 标签。务必输出纯 JSON。"
         )
 
         response = self.client.chat.completions.create(

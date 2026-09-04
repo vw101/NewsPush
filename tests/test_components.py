@@ -19,7 +19,7 @@ def test_config_loading():
     assert cat_ids == ["industry", "skills", "frontier", "security"]
     assert config.history_retention_days == 14
     assert len(config.sources) >= 5
-    assert config.summarizer.top_headlines_count == 2
+    assert config.summarizer.top_headlines_count == 3
 
 
 def test_news_item_id_generation():
