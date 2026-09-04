@@ -16,26 +16,28 @@ class FeishuCardFormatter:
         self.config = config
 
     def _build_news_block(self, item: DigestItem, index_prefix: str = "") -> list:
-        """Build a mobile-first modular news block with large font title, hook, native collapsible detail, and subtle meta."""
-        # 1. Headline & Hook (Large 16px bold title + 15px hook)
-        title_content = f"### {index_prefix}{item.title}\n\n📌 **一句话速览**：{item.summary}"
-        elements = [
-            {
-                "tag": "markdown",
-                "content": title_content,
-            }
-        ]
+        """Build a mobile-first modular news block with extra-large title, indented column container, native collapsible detail, and subtle meta."""
+        # 1. Headline & Hook (Enlarged H2 title + 15px hook)
+        title_content = f"## {index_prefix}{item.title}\n\n📌 **一句话速览**：{item.summary}"
 
-        # 2. Detailed content inside native collapsible panel
+        # 2. Detailed content inside native collapsible panel with enlarged subheadings and double-spaced readability
         facts_text = item.detailed_content or item.why_it_matters or item.summary
         mechanics_text = item.technical_mechanics or "持续关注该项目后续架构演进与实践。"
 
         detail_markdown = (
-            f"📖 **具体实况进展**：\n{facts_text}\n\n"
-            f"⚙️ **底层技术机制**：\n{mechanics_text}"
+            f"### 📖 具体实况进展\n{facts_text}\n\n"
+            f"### ⚙️ 底层技术机制\n{mechanics_text}"
         )
 
-        elements.append(
+        tags_str = " ".join([f"#{t.lstrip('#')}" for t in item.tags]) if item.tags else ""
+        tags_part = f" · {tags_str}" if tags_str else ""
+        meta_content = f"<font color='grey'>💬 {item.source}{tags_part} · [原文 ↗]({item.url})</font>"
+
+        inner_elements = [
+            {
+                "tag": "markdown",
+                "content": title_content,
+            },
             {
                 "tag": "collapsible_panel",
                 "expanded": False,
@@ -58,22 +60,39 @@ class FeishuCardFormatter:
                         "content": detail_markdown,
                     }
                 ],
-            }
-        )
-
-        # 3. Subtle grey metadata footer
-        tags_str = " ".join([f"#{t.lstrip('#')}" for t in item.tags]) if item.tags else ""
-        tags_part = f" · {tags_str}" if tags_str else ""
-        meta_content = f"<font color='grey'>💬 {item.source}{tags_part} · [原文 ↗]({item.url})</font>"
-
-        elements.append(
+            },
             {
                 "tag": "markdown",
                 "content": meta_content,
-            }
-        )
+            },
+        ]
 
-        return elements
+        # Use column_set with a left spacer column so wrapped lines strictly align with the title boundary
+        indented_block = {
+            "tag": "column_set",
+            "flex_mode": "none",
+            "horizontal_spacing": "small",
+            "columns": [
+                {
+                    "tag": "column",
+                    "width": "auto",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": "　",
+                        }
+                    ],
+                },
+                {
+                    "tag": "column",
+                    "width": "weighted",
+                    "weight": 1,
+                    "elements": inner_elements,
+                },
+            ],
+        }
+
+        return [indented_block]
 
     def format_card(self, digest: DigestResult) -> Dict[str, Any]:
         elements = []
