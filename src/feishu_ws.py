@@ -64,7 +64,10 @@ class FeishuWebSocketListener:
                 "msg_type": "text",
                 "content": json.dumps({"text": text}),
             }
-            httpx.post(url, headers=headers, json=body, timeout=5.0)
+            with httpx.Client(timeout=10.0, verify=False) as client:
+                resp = client.post(url, headers=headers, json=body)
+                if resp.status_code != 200 or resp.json().get("code") != 0:
+                    logger.warning(f"Quick text reply response: {resp.status_code} {resp.text}")
         except Exception as e:
             logger.warning(f"Failed to send quick text reply: {e}")
 
