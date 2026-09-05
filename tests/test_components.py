@@ -223,3 +223,88 @@ def test_pipeline_dry_run_with_mock():
     Path(config.history_file).unlink(missing_ok=True)
 
 
+def test_feishu_card_element_budget():
+    config = load_config()
+    formatter = FeishuCardFormatter(config)
+
+    def make_item(i, cat):
+        return DigestItem(
+            title=f"AI Milestone {i}",
+            summary=f"Summary of breakthrough {i}",
+            why_it_matters="Great industry impact",
+            technical_mechanics="Novel MoE architecture",
+            detailed_content="Detailed facts and metrics",
+            url=f"https://example.com/{cat}/{i}",
+            source="OpenAI Blog",
+            category=cat,
+            tags=["#AI", "#Model"],
+        )
+
+    # Full digest with 3 headlines + 4 categories * 4 items = 19 items
+    digest = DigestResult(
+        date_str="2026年09月04日 星期五",
+        top_headlines=[make_item(i, "industry") for i in range(3)],
+        categorized_items={
+            cat: [make_item(i, cat) for i in range(4)]
+            for cat in ["industry", "skills", "frontier", "security"]
+        },
+        total_scanned=45,
+    )
+
+    card = formatter.format_card(digest)
+    count = formatter.count_card_elements(card)
+    # Must strictly satisfy Feishu 200 element limit (with safe buffer <= 160)
+    assert count <= 160, f"Card element count {count} exceeds safe threshold 160"
+
+    compact = formatter.format_compact_card(digest)
+    compact_count = formatter.count_card_elements(compact)
+    assert compact_count < 40, f"Compact card element count {compact_count} should be < 40"
+
+
+def test_fallback_summarizer_ai_relevance_ranking():
+    config = AppConfig(llm_api_key="")
+    summarizer = NewsSummarizer(config)
+
+    items = [
+        NewsItem(
+            id="1",
+            title="新学期正版软件限时优惠与返校打折",
+            url="https://sspai.com/post/1",
+            source_name="少数派",
+            category="skills",
+            summary="多款生活与工作正版软件打折促销活动",
+        ),
+        NewsItem(
+            id="2",
+            title="开学季快捷指令统计作业生活技巧",
+            url="https://sspai.com/post/2",
+            source_name="少数派",
+            category="skills",
+            summary="利用iOS快捷指令计算教学周和生活闹钟",
+        ),
+        NewsItem(
+            id="3",
+            title="OpenAI 发布新一代 GPT-5 大模型推理架构突破",
+            url="https://openai.com/news/3",
+            source_name="OpenAI Blog",
+            category="industry",
+            summary="全新 LLM Agent 架构带来 80% 推理算力节省与对齐安全提升",
+        ),
+        NewsItem(
+            id="4",
+            title="DeepSeek 深度强化学习算法与开源权重发布",
+            url="https://deepseek.com/4",
+            source_name="DeepSeek",
+            category="frontier",
+            summary="解耦 Attention 机制大幅压低 KV-Cache 并开放训练权重",
+        ),
+    ]
+
+    result = summarizer.summarize(items)
+    # Top headlines must prioritize AI items (id 3 & 4) rather than lifestyle software discounts
+    top_titles = [h.title for h in result.top_headlines]
+    assert any("OpenAI" in t or "GPT" in t for t in top_titles)
+    assert any("DeepSeek" in t or "强化学习" in t for t in top_titles)
+
+
+

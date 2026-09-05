@@ -1,12 +1,13 @@
 /**
- * 阿里云函数计算 FC 3.0 / 2.0: 飞书事件回调与 GitHub Actions 点火网关
+ * 阿里云函数计算 FC 3.0 / 2.0: 飞书事件回调与 GitHub Actions 点火网关 (双向赋能版)
  * 
- * 核心设计：
- * 1. 【Web 函数端口监听】：启动 HTTP Server 监听 9000 端口（解决 node index.js 执行后直接退出导致的 412 CAExited / 3秒超时问题）。
- * 2. 【50ms 秒级握手】：收到飞书 url_verification challenge 时，极速原样返回，彻底解决“3秒超时”问题。
- * 3. 【即时群内冒泡】：群内收到 @指令 后，200ms 内先在群里发送“正在全网检索”提示，消除等待焦虑。
- * 4. 【异步点火】：调用 GitHub API 唤醒 GitHub Actions (repository_dispatch)，启动云端容器抓取、AI 总结并推送大卡片。
- * 5. 【双模兼容】：同时导出 exports.handler，兼容事件函数模式。
+ * 核心功能：
+ * 1. 【Web 函数端口监听】：启动 HTTP Server 监听 9000 端口，双模兼容 (Web 函数 / 事件函数)。
+ * 2. 【50ms 秒级握手】：收到飞书 url_verification challenge 时，极速原样返回，杜绝超时。
+ * 3. 【即时群内冒泡】：群内收到 @机器人 指令后，200ms 内先在群里发送“正在全网检索”提示，消除等待焦虑。
+ * 4. 【⏰ 定时触发执行】：支持阿里云 FC 定时触发器（Timer Trigger / Cron），并在指定时间（如每天 09:00）自动唤醒 GitHub Actions 推送早报。
+ * 5. 【🔗 HTTP 手动点火】：支持 GET/POST /cron 或 /timer，可由外部定时器（如 UptimeKuma/cron-job）或浏览器一键手动点火。
+ * 6. 【异步点火】：调用 GitHub API 唤醒 GitHub Actions (repository_dispatch)，执行云端全流程抓取、AI 总结与大卡片推送。
  */
 
 const http = require('http');
@@ -17,6 +18,7 @@ const GITHUB_REPO = process.env.GITHUB_REPO || 'vw101/NewsPush';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || '';
 const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || '';
+const FEISHU_CHAT_ID = process.env.FEISHU_CHAT_ID || 'oc_41144adb848366fd8a1ac77bc8d40d7d';
 const PORT = process.env.FC_SERVER_PORT || 9000;
 
 // 基础 HTTPS POST 请求封装（纯原生，零第三方 npm 依赖）
@@ -35,7 +37,7 @@ function httpsPost(urlStr, headers, bodyObj) {
           'Content-Length': Buffer.byteLength(postData),
           ...headers,
         },
-        timeout: 5000,
+        timeout: 8000,
       }, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
@@ -99,12 +101,13 @@ async function sendQuickReply(chatId, text) {
 }
 
 // 唤醒 GitHub Actions 点火执行
-async function triggerGitHubActions(chatId, rawText) {
+async function triggerGitHubActions(chatId, rawText, triggerSource = 'aliyun_fc') {
   if (!GITHUB_TOKEN) {
     console.warn('未配置 GITHUB_TOKEN，跳过唤醒 GitHub Actions');
-    return;
+    return { ok: false, error: 'No GITHUB_TOKEN' };
   }
   try {
+    const targetChat = chatId || FEISHU_CHAT_ID;
     const res = await httpsPost(
       `https://api.github.com/repos/${GITHUB_REPO}/dispatches`,
       {
@@ -115,31 +118,58 @@ async function triggerGitHubActions(chatId, rawText) {
       {
         event_type: 'feishu_mention_news',
         client_payload: {
-          chat_id: chatId,
+          chat_id: targetChat,
           raw_text: rawText,
-          triggered_by: 'aliyun_fc',
+          triggered_by: triggerSource,
         },
       }
     );
-    console.log(`GitHub Actions 唤醒结果 HTTP: ${res.status}`);
+    console.log(`GitHub Actions 唤醒结果 HTTP: ${res.status} (来源: ${triggerSource}, 目标群: ${targetChat})`);
+    return { ok: res.status >= 200 && res.status < 300, status: res.status };
   } catch (err) {
     console.error('唤醒 GitHub Actions 异常:', err);
+    return { ok: false, error: err.message };
   }
 }
 
 // 业务核心处理逻辑
-async function processRequest(method, rawBody) {
+async function processRequest(method, rawBody, reqUrl = '/', reqHeaders = {}) {
+  const urlPath = reqUrl.split('?')[0].toLowerCase();
+  const isHttpCronPath = urlPath.includes('/cron') || urlPath.includes('/timer') || urlPath.includes('/schedule') || urlPath.includes('/trigger');
+
+  // 处理 GET 请求
   if (method === 'GET') {
+    if (isHttpCronPath) {
+      console.log(`⏰ 收到 HTTP GET 定时/手动点火请求: ${reqUrl}`);
+      const ghResult = await triggerGitHubActions(FEISHU_CHAT_ID, 'HTTP GET 定时早报点火', 'aliyun_fc_http_cron');
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({
+          code: 0,
+          msg: 'HTTP GET 早报定时任务点火成功',
+          targetChatId: FEISHU_CHAT_ID,
+          githubResult: ghResult,
+          triggeredAt: new Date().toISOString(),
+        }),
+      };
+    }
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      body: '🤖 阿里云 FC 飞书机器人转接器已就绪！',
+      body: '🤖 阿里云 FC 飞书机器人转接器已就绪！\n- 支持飞书群 @机器人 事件回调\n- 支持阿里云 FC 定时触发器 (Timer Trigger)\n- 支持 HTTP GET/POST /cron 随时点火',
     };
   }
 
   let body = {};
   if (rawBody) {
-    body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody;
+    try {
+      body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody;
+    } catch (e) {
+      console.warn('解析请求 Body 失败，当作原始字符串处理:', e.message);
+      body = { rawText: String(rawBody) };
+    }
   }
 
   // 1. 响应飞书开放平台 URL 校验 Challenge 请求 (50ms 秒级响应)
@@ -152,12 +182,49 @@ async function processRequest(method, rawBody) {
     };
   }
 
-  // 2. 处理群内 @机器人 消息事件
+  // 2. 识别并执行定时触发器 (阿里云 FC Timer Trigger 或 HTTP /cron 触发)
+  const isTimerTrigger = Boolean(
+    body.triggerTime ||
+    body.triggerName ||
+    (reqHeaders && (reqHeaders['x-fc-event'] === 'timer' || reqHeaders['x-fc-trigger-type'] === 'timer')) ||
+    isHttpCronPath ||
+    body.type === 'timer' ||
+    body.action === 'timer' ||
+    body.payload === 'timer'
+  );
+
+  if (isTimerTrigger) {
+    let innerPayload = {};
+    if (typeof body.payload === 'string' && body.payload.trim().startsWith('{')) {
+      try { innerPayload = JSON.parse(body.payload); } catch (_) {}
+    }
+
+    const targetChatId = innerPayload.chat_id || body.chat_id || FEISHU_CHAT_ID;
+    const triggerName = body.triggerName || 'daily-timer';
+    console.log(`⏰ 收到定时触发器 [${triggerName}]，正在唤醒 GitHub Actions... (目标群: ${targetChatId})`);
+
+    const ghResult = await triggerGitHubActions(targetChatId, '定时早报点火', 'aliyun_fc_timer');
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({
+        code: 0,
+        msg: 'Timer trigger processed successfully',
+        triggerName,
+        targetChatId,
+        githubResult: ghResult,
+        triggerTime: body.triggerTime || new Date().toISOString(),
+      }),
+    };
+  }
+
+  // 3. 处理飞书群内 @机器人 消息事件
   const eventType = body.header?.event_type || body.event?.type;
   if (eventType === 'im.message.receive_v1' || eventType === 'message') {
     const event = body.event || {};
     const message = event.message || event;
-    const chatId = message.chat_id;
+    const chatId = message.chat_id || FEISHU_CHAT_ID;
     const contentStr = message.content || message.text || '{}';
 
     let text = '';
@@ -180,14 +247,19 @@ async function processRequest(method, rawBody) {
       text.trim().length > 0;
 
     if (hasKeyword && chatId) {
-      // A. 先在群里回显预热提示（约 150ms 完成）
-      await sendQuickReply(
-        chatId,
-        '🤖 收到指令！正在全网检索近3天 AI 重磅动态、实战 Skill、前沿突破与安全资讯，请稍候约 1 分钟...'
-      );
+      // 并行执行群内回显与 GitHub 点火，加设 1.8 秒竞速截断，彻底杜绝飞书 3 秒超时重发
+      const tasks = [
+        sendQuickReply(
+          chatId,
+          '🤖 收到指令！正在全网检索近3天 AI 重磅动态、实战 Skill、前沿突破与安全资讯，请稍候约 1 分钟...'
+        ),
+        triggerGitHubActions(chatId, text, 'feishu_mention'),
+      ];
 
-      // B. 异步点火唤醒 GitHub Actions
-      await triggerGitHubActions(chatId, text);
+      await Promise.race([
+        Promise.allSettled(tasks),
+        new Promise(resolve => setTimeout(resolve, 1800)),
+      ]);
     }
   }
 
@@ -205,7 +277,7 @@ const server = http.createServer((req, res) => {
   req.on('end', async () => {
     try {
       const rawBody = Buffer.concat(bodyChunks).toString('utf-8');
-      const result = await processRequest(req.method, rawBody);
+      const result = await processRequest(req.method, rawBody, req.url, req.headers);
       res.writeHead(result.statusCode, result.headers);
       res.end(result.body);
     } catch (err) {
@@ -222,8 +294,9 @@ server.listen(PORT, () => {
 
 // 2. 同时导出 exports.handler，兼容事件函数模式
 exports.handler = async (arg1, arg2, context) => {
+  // Case 1: FC HTTP 触发器 (req, res, context)
   if (arg2 && typeof arg2.send === 'function') {
-    const result = await processRequest(arg1.method, arg1.body);
+    const result = await processRequest(arg1.method, arg1.body, arg1.path || arg1.url, arg1.headers);
     arg2.setStatusCode(result.statusCode);
     for (const [k, v] of Object.entries(result.headers)) {
       arg2.setHeader(k, v);
@@ -231,6 +304,7 @@ exports.handler = async (arg1, arg2, context) => {
     arg2.send(result.body);
     return;
   }
-  let eventStr = arg1 ? (Buffer.isBuffer(arg1) ? arg1.toString('utf-8') : arg1) : '{}';
-  return await processRequest('POST', eventStr);
+  // Case 2: FC 定时触发器 / 事件触发器 (event, context)
+  let eventStr = arg1 ? (Buffer.isBuffer(arg1) ? arg1.toString('utf-8') : (typeof arg1 === 'string' ? arg1 : JSON.stringify(arg1))) : '{}';
+  return await processRequest('POST', eventStr, '/timer', { 'x-fc-event': 'timer' });
 };

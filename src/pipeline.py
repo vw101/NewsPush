@@ -88,6 +88,7 @@ class NewsPipeline:
 
         # 4. Format
         card_payload = self.feishu_formatter.format_card(digest)
+        compact_payload = self.feishu_formatter.format_compact_card(digest)
         markdown_content = self.markdown_formatter.format_markdown(digest)
 
         # 5. Archive Markdown locally
@@ -100,7 +101,12 @@ class NewsPipeline:
             logger.info("[DRY RUN] Skipping Feishu push.")
         else:
             logger.info("Pushing interactive card to Feishu...")
-            send_success = self.feishu_sender.send(card_payload, chat_id=target_chat_id)
+            send_success = self.feishu_sender.send(
+                card_payload,
+                chat_id=target_chat_id,
+                fallback_card=compact_payload,
+                fallback_text=markdown_content,
+            )
 
         # 7. Update history
         if not dry_run:

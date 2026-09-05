@@ -167,14 +167,14 @@ class NewsSummarizer:
         # 仅当用户未指定或指定的模型是免费通道（包含 :free）时，才启用自动容灾备用池
         if not self.config.llm_model or ":free" in self.config.llm_model:
             for fallback in [
+                "minimax/minimax-m3:free",
+                "nvidia/nemotron-3.5-lightning:free",
+                "liquid/lfm-2.5-2.6b:free",
+                "z-ai/glm-5.2:free",
                 "google/gemma-4-31b-it:free",
                 "google/gemma-4-26b-a4b-it:free",
-                "z-ai/glm-5.2:free",
-                "minimax/minimax-m3:free",
-                "minimax/minimax-m2.7:free",
-                "nvidia/nemotron-3.5-lightning:free",
-                "deepseek/deepseek-chat:free",
-                "google/gemini-2.0-flash-exp:free",
+                "nvidia/nemotron-3-super-120b-a12b:free",
+                "openrouter/free",
             ]:
                 if fallback not in models_to_try:
                     models_to_try.append(fallback)
@@ -183,28 +183,41 @@ class NewsSummarizer:
             if m and m not in candidate_models:
                 candidate_models.append(m)
 
+        effective_max_tokens = min(self.config.summarizer.max_tokens, 3500)
         last_err = None
         for model_name in candidate_models:
-            try:
-                logger.info(f"Invoking free LLM model: {model_name}...")
-                use_json_mode = "deepseek" not in model_name.lower()
-                response = self.client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_content},
-                    ],
-                    temperature=self.config.summarizer.temperature,
-                    max_tokens=self.config.summarizer.max_tokens,
-                    response_format={"type": "json_object"} if use_json_mode else None,
-                )
+            for attempt_format in [True, False]:
+                try:
+                    logger.info(f"Invoking free LLM model: {model_name} (json_format={attempt_format})...")
+                    use_json_mode = attempt_format and ("deepseek" not in model_name.lower())
+                    response = self.client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": user_content},
+                        ],
+                        temperature=self.config.summarizer.temperature,
+                        max_tokens=effective_max_tokens,
+                        response_format={"type": "json_object"} if use_json_mode else None,
+                    )
 
-                raw_output = response.choices[0].message.content or ""
-                logger.info(f"Free model {model_name} responded successfully!")
-                return self._parse_llm_json(raw_output, items, date_str)
-            except Exception as e:
-                logger.warning(f"Model {model_name} failed: {e}. Trying next free model...")
-                last_err = e
+                    if not response.choices or not response.choices[0].message:
+                        raise ValueError("Empty choices returned by provider")
+
+                    raw_output = response.choices[0].message.content or ""
+                    if not raw_output.strip():
+                        raise ValueError("Empty content string returned by provider")
+
+                    logger.info(f"Free model {model_name} responded successfully ({len(raw_output)} chars)!")
+                    return self._parse_llm_json(raw_output, items, date_str)
+                except Exception as e:
+                    err_msg = str(e)
+                    if attempt_format and any(k in err_msg.lower() for k in ["response_format", "json_object", "400", "bad request"]):
+                        logger.warning(f"Model {model_name} rejected json_object mode ({e}). Retrying without response_format...")
+                        continue
+                    logger.warning(f"Model {model_name} failed: {e}. Trying next free model...")
+                    last_err = e
+                    break
 
         raise last_err or RuntimeError("All candidate LLM models failed.")
 
@@ -330,11 +343,27 @@ class NewsSummarizer:
     def _fallback_summarize(self, items: List[NewsItem], date_str: str) -> DigestResult:
         """Heuristic fallback when LLM is unavailable."""
         categorized: Dict[str, List[DigestItem]] = {}
-        all_digest_items: List[DigestItem] = []
+        ai_keywords = [
+            "ai", "llm", "gpt", "agent", "prompt", "claude", "deepseek", "model",
+            "openai", "anthropic", "transformer", "diffusion", "rag", "eval",
+            "weights", "inference", "training", "parameter", "benchmark", "arxiv",
+            "paper", "safety", "alignment", "reasoning", "cursor", "copilot",
+            "大模型", "人工智能", "算法", "开源", "架构", "对齐", "推理", "算力", "芯片"
+        ]
 
+        scored_items = []
         for item in items:
             desc = item.summary if item.summary else "暂无更多详细描述，请点击原文链接查看全文。"
             cat = item.category if item.category in ["industry", "skills", "frontier", "security"] else "industry"
+
+            relevance = 0
+            text_to_check = f"{item.title} {desc}".lower()
+            for kw in ai_keywords:
+                if kw in text_to_check:
+                    relevance += 2
+            if any(s in item.source_name.lower() for s in ["openai", "deepmind", "hugging face", "arxiv", "lesswrong", "techcrunch ai"]):
+                relevance += 5
+
             d_item = DigestItem(
                 title=f"📌 {item.title}",
                 summary=desc[:80] + ("..." if len(desc) > 80 else ""),
@@ -344,14 +373,17 @@ class NewsSummarizer:
                 url=item.url,
                 source=item.source_name,
                 category=cat,
-                score=5,
+                score=min(10, max(4, 5 + relevance // 2)),
                 tags=["#AI", f"#{cat.capitalize()}"],
                 original_title=item.title,
             )
-            all_digest_items.append(d_item)
+            scored_items.append((relevance, d_item))
             categorized.setdefault(cat, []).append(d_item)
 
-        top_headlines = all_digest_items[: self.config.summarizer.top_headlines_count]
+        # Sort all items by AI relevance descending so top headlines are truly AI-centric
+        scored_items.sort(key=lambda x: x[0], reverse=True)
+        top_headlines = [pair[1] for pair in scored_items[: self.config.summarizer.top_headlines_count]]
+
         for cat_id in categorized:
             categorized[cat_id] = categorized[cat_id][: self.config.summarizer.category_items_count]
 

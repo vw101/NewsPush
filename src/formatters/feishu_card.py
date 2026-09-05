@@ -69,56 +69,40 @@ class FeishuCardFormatter:
 
         return inner_elements
 
+    @staticmethod
+    def count_card_elements(payload: Any) -> int:
+        """Recursively count all components/elements with a 'tag' field."""
+        count = 0
+        if isinstance(payload, dict):
+            if "tag" in payload:
+                count += 1
+            for val in payload.values():
+                count += FeishuCardFormatter.count_card_elements(val)
+        elif isinstance(payload, list):
+            for val in payload:
+                count += FeishuCardFormatter.count_card_elements(val)
+        return count
+
     def format_card(self, digest: DigestResult) -> Dict[str, Any]:
+        """
+        Constructs rich Feishu Interactive Card Schema 2.0.
+        Uses clean direct layout without redundant container nesting to strictly comply with the 200-element limit.
+        """
         elements = []
-
-        def build_section(title_text: str, items: List[DigestItem], is_headline: bool = False):
-            sec_elements = [
-                {
-                    "tag": "markdown",
-                    "content": f"**{title_text}**",
-                }
-            ]
-            col_elements = []
-            for idx, item in enumerate(items, 1):
-                prefix = f"{idx}. " if is_headline else "• "
-                col_elements.extend(self._build_news_block(item, index_prefix=prefix))
-                if idx < len(items):
-                    col_elements.append({"tag": "hr"})
-
-            sec_elements.append(
-                {
-                    "tag": "column_set",
-                    "flex_mode": "none",
-                    "horizontal_spacing": "small",
-                    "columns": [
-                        {
-                            "tag": "column",
-                            "width": "auto",
-                            "elements": [
-                                {
-                                    "tag": "markdown",
-                                    "content": "　",
-                                }
-                            ],
-                        },
-                        {
-                            "tag": "column",
-                            "width": "weighted",
-                            "weight": 1,
-                            "elements": col_elements,
-                        },
-                    ],
-                }
-            )
-            sec_elements.append({"tag": "hr"})
-            return sec_elements
 
         # 1. Top Headlines Section (今日必读头条)
         if digest.top_headlines:
-            elements.extend(
-                build_section("🔶 今日最重磅头条 (Top Headlines)", digest.top_headlines, is_headline=True)
+            elements.append(
+                {
+                    "tag": "markdown",
+                    "content": "**🔶 今日最重磅头条 (Top Headlines)**",
+                }
             )
+            for idx, item in enumerate(digest.top_headlines, 1):
+                elements.extend(self._build_news_block(item, index_prefix=f"{idx}. "))
+                if idx < len(digest.top_headlines):
+                    elements.append({"tag": "hr"})
+            elements.append({"tag": "hr"})
 
         # Category Name Mapping
         cat_meta = {cat.id: cat.name for cat in self.config.categories}
@@ -131,7 +115,18 @@ class FeishuCardFormatter:
                 continue
 
             cat_title = cat_meta.get(cat_id, cat_id.capitalize())
-            elements.extend(build_section(cat_title, items, is_headline=False))
+            elements.append(
+                {
+                    "tag": "markdown",
+                    "content": f"**{cat_title}**",
+                }
+            )
+            for idx, item in enumerate(items, 1):
+                elements.extend(self._build_news_block(item, index_prefix="• "))
+                if idx < len(items):
+                    elements.append({"tag": "hr"})
+
+            elements.append({"tag": "hr"})
 
         # 3. Footer Note
         elements.append(
@@ -163,7 +158,93 @@ class FeishuCardFormatter:
             },
         }
 
-        # Handle signature if secret is present
+        # Check total element count budget to absolutely prevent 11310
+        total_elements = self.count_card_elements(card_payload)
+        if total_elements > 185:
+            return self.format_compact_card(digest)
+
+        if self.config.feishu_secret:
+            timestamp = str(int(time.time()))
+            sign = self._generate_sign(timestamp, self.config.feishu_secret)
+            card_payload["timestamp"] = timestamp
+            card_payload["sign"] = sign
+
+        return card_payload
+
+    def format_compact_card(self, digest: DigestResult) -> Dict[str, Any]:
+        """
+        Ultra-lightweight fallback card with minimal element count (<40 elements).
+        Guaranteed to bypass element limit (11310) and mobile rendering bottlenecks.
+        """
+        elements = []
+
+        if digest.top_headlines:
+            elements.append(
+                {
+                    "tag": "markdown",
+                    "content": "**🔶 今日最重磅头条 (Top Headlines)**",
+                }
+            )
+            hl_md = []
+            for idx, item in enumerate(digest.top_headlines, 1):
+                tags_str = " ".join([f"#{t.lstrip('#')}" for t in item.tags]) if item.tags else ""
+                hl_md.append(
+                    f"**{idx}. {item.title}**\n"
+                    f"📌 {item.summary}\n"
+                    f"<font color='grey'>💬 {item.source} {tags_str} · [原文 ↗]({item.url})</font>"
+                )
+            elements.append({"tag": "markdown", "content": "\n\n".join(hl_md)})
+            elements.append({"tag": "hr"})
+
+        cat_meta = {cat.id: cat.name for cat in self.config.categories}
+        category_order = ["industry", "skills", "frontier", "security"]
+        for cat_id in category_order:
+            items = digest.categorized_items.get(cat_id, [])
+            if not items:
+                continue
+
+            cat_title = cat_meta.get(cat_id, cat_id.capitalize())
+            elements.append({"tag": "markdown", "content": f"**{cat_title}**"})
+
+            cat_md = []
+            for item in items:
+                tags_str = " ".join([f"#{t.lstrip('#')}" for t in item.tags]) if item.tags else ""
+                cat_md.append(
+                    f"• **{item.title}**\n"
+                    f"  {item.summary} <font color='grey'>({item.source} · [原文 ↗]({item.url}))</font>"
+                )
+            elements.append({"tag": "markdown", "content": "\n\n".join(cat_md)})
+            elements.append({"tag": "hr"})
+
+        elements.append(
+            {
+                "tag": "markdown",
+                "content": "<font color='grey'>✦ AI Daily Pulse · 30秒无感精读全球 AI 浪潮 (精炼版)</font>",
+            }
+        )
+
+        card_payload = {
+            "msg_type": "interactive",
+            "card": {
+                "schema": "2.0",
+                "config": {
+                    "wide_screen_mode": True,
+                    "enable_forward": True,
+                },
+                "header": {
+                    "template": "wathet",
+                    "title": {
+                        "tag": "plain_text",
+                        "content": f"{self.config.app_title} ({digest.date_str})",
+                    },
+                },
+                "body": {
+                    "direction": "vertical",
+                    "elements": elements,
+                },
+            },
+        }
+
         if self.config.feishu_secret:
             timestamp = str(int(time.time()))
             sign = self._generate_sign(timestamp, self.config.feishu_secret)
