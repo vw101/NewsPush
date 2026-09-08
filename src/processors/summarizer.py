@@ -164,17 +164,14 @@ class NewsSummarizer:
         )
 
         models_to_try = [self.config.llm_model]
-        # 仅当用户未指定或指定的模型是免费通道（包含 :free）时，才启用自动容灾备用池
-        if not self.config.llm_model or ":free" in self.config.llm_model:
+        # 仅当用户未指定或指定的模型是免费通道（包含 :free 或 openrouter/free）时，才启用自动容灾备用池
+        if not self.config.llm_model or ":free" in self.config.llm_model or "openrouter/free" in self.config.llm_model:
             for fallback in [
-                "minimax/minimax-m3:free",
-                "nvidia/nemotron-3.5-lightning:free",
-                "liquid/lfm-2.5-2.6b:free",
-                "z-ai/glm-5.2:free",
-                "google/gemma-4-31b-it:free",
-                "google/gemma-4-26b-a4b-it:free",
-                "nvidia/nemotron-3-super-120b-a12b:free",
                 "openrouter/free",
+                "dots-studio/dots-3-note-preview:free",
+                "nvidia/nemotron-3-ultra-550b-a55b:free",
+                "nvidia/nemotron-3.5-lightning:free",
+                "google/gemma-4-31b-it:free",
             ]:
                 if fallback not in models_to_try:
                     models_to_try.append(fallback)
@@ -211,11 +208,10 @@ class NewsSummarizer:
                     logger.info(f"Free model {model_name} responded successfully ({len(raw_output)} chars)!")
                     return self._parse_llm_json(raw_output, items, date_str)
                 except Exception as e:
-                    err_msg = str(e)
-                    if attempt_format and any(k in err_msg.lower() for k in ["response_format", "json_object", "400", "bad request"]):
-                        logger.warning(f"Model {model_name} rejected json_object mode ({e}). Retrying without response_format...")
+                    if attempt_format:
+                        logger.warning(f"Model {model_name} failed with json_format=True ({e}). Retrying without response_format...")
                         continue
-                    logger.warning(f"Model {model_name} failed: {e}. Trying next free model...")
+                    logger.warning(f"Model {model_name} failed: {e}. Trying next candidate model...")
                     last_err = e
                     break
 
@@ -224,7 +220,7 @@ class NewsSummarizer:
     @staticmethod
     def _robust_json_load(clean_json: str) -> dict:
         try:
-            return json.loads(clean_json)
+            return json.loads(clean_json, strict=False)
         except json.JSONDecodeError:
             s = clean_json.strip()
             in_string = False
@@ -256,7 +252,7 @@ class NewsSummarizer:
                 s += "}" if open_ch == "{" else "]"
 
             try:
-                return json.loads(s)
+                return json.loads(s, strict=False)
             except json.JSONDecodeError:
                 last_brace = clean_json.rfind("}")
                 if last_brace != -1:
@@ -276,7 +272,7 @@ class NewsSummarizer:
                     while t_stack:
                         op = t_stack.pop()
                         truncated += "}" if op == "{" else "]"
-                    return json.loads(truncated)
+                    return json.loads(truncated, strict=False)
                 raise
 
     def _parse_llm_json(self, text: str, original_items: List[NewsItem], date_str: str) -> DigestResult:
@@ -351,9 +347,13 @@ class NewsSummarizer:
             "大模型", "人工智能", "算法", "开源", "架构", "对齐", "推理", "算力", "芯片"
         ]
 
+        import re
+        arxiv_cleaner = re.compile(r"^arXiv:\d+\.\d+(?:v\d+)?\s*(?:Announce Type:\s*\w+\s*)?(?:Abstract:\s*)?", re.IGNORECASE)
+
         scored_items = []
         for item in items:
             desc = item.summary if item.summary else "暂无更多详细描述，请点击原文链接查看全文。"
+            desc = arxiv_cleaner.sub("", desc).strip()
             cat = item.category if item.category in ["industry", "skills", "frontier", "security"] else "industry"
 
             relevance = 0
